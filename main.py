@@ -1,18 +1,27 @@
 from typing import List
-
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends,status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
 import databases
-import aiosqlite
+import asyncpg
+import psycopg2
 import sqlalchemy
+import os
+import urllib
 
-
-DATABASE_URL = "sqlite:///./student.db"
-# SQLALCHEMY_DATABASE_URL = "postgresql://user:password@postgresserver/db"
-
-metadata = sqlalchemy.MetaData()
+host_server = os.environ.get('host_server', 'localhost')
+db_server_port = urllib.parse.quote_plus(str(os.environ.get('db_server_port', '5432')))
+database_name = os.environ.get('database_name', 'postgres')
+db_username = os.environ['DB_USERNAME']
+db_password = os.environ['DB_PASSWORD']
+ssl_mode = urllib.parse.quote_plus(str(os.environ.get('ssl_mode','prefer')))
+DATABASE_URL = 'postgresql://{}:{}@{}:{}/{}?sslmode={}'.format(db_username, db_password, host_server, db_server_port, database_name, ssl_mode)
 
 database = databases.Database(DATABASE_URL)
+metadata = sqlalchemy.MetaData()
+
+
 
 student = sqlalchemy.Table(
     "student",
@@ -53,9 +62,9 @@ enrollment = sqlalchemy.Table(
     sqlalchemy.Column("batch_id", sqlalchemy.Integer),
     sqlalchemy.Column("enrollment_date", sqlalchemy.String(500))
 )
-
 engine = sqlalchemy.create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
+    
+    DATABASE_URL, pool_size=3, max_overflow=0
 )
 
 metadata.create_all(engine)
@@ -128,7 +137,8 @@ async def update_student(student_id: int, r: StudentIn = Depends()):
 @app.delete("/deletestudent/{student_id}", response_model=Student)
 async def delete_student(student_id: int):
     query = student.delete().where(student.c.student_id == student_id)
-    return await database.execute(query)
+    await database.execute(query)
+    return {"message": "Student with id: {} deleted successfully!".format(student_id)}
 
 ###################################### COURSE #################################
 class UpdateCourse(BaseModel):
